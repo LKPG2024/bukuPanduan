@@ -14,45 +14,91 @@
         margin: 0;
         padding: 0;
         overflow: hidden;
-        background-color: #f0f0f0;
+        background-color: #f5d5ae;
         color: #333;
       }
       #book-container {
         width: 100%;
-        height: 100vh;
+        height: calc(100vh - 100px);
         overflow: hidden;
         position: relative;
       }
-      #book {
+      #pdf-viewer-container {
+        position: relative;
         width: 100%;
         height: 100%;
-        border: none;
+        overflow: hidden;
+      }
+      #pdf-viewer {
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 100%;
       }
       #controls {
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
         background-color: rgba(255, 255, 255, 0.8);
         padding: 10px;
-        border-radius: 5px;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        border-top: 1px solid #ccc;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      #navigation {
+        display: flex;
+        align-items: center;
+      }
+      #preview-panel {
+        display: flex;
+        overflow-x: auto;
+        width: calc(100% - 150px);
+        max-width: 80%;
+        white-space: nowrap;
+      }
+      .preview-item {
+        margin-right: 10px;
+        cursor: pointer;
+        border: 1px solid #ccc;
+        padding: 5px;
       }
       #night-mode {
+        margin-right: 10px;
+      }
+
+      @media screen and (max-width: 768px) {
+        .preview-item {
+          width: 60px;
+        }
+      }
+
+      #logo {
+        width: 50px;
+        height: auto;
         margin-right: 10px;
       }
     </style>
   </head>
   <body>
     <div id="book-container">
-      <iframe id="book" src="etikaKristen.pdf" frameborder="0"></iframe>
-      <div id="controls" class="text-center">
+      <div id="pdf-viewer-container">
+        <canvas id="pdf-viewer"></canvas>
+      </div>
+    </div>
+    <div id="controls">
+      <div id="navigation">
+        <img src="logoo.png" alt="Logo" id="logo" />
+        <button id="prev-page" class="btn btn-primary mr-2"><i class="fas fa-arrow-left"></i></button>
+        <input type="number" id="page-number" min="1" max="1" value="1" style="width: 60px; text-align: center; margin-right: 5px" />
+        <button id="go-to-page" class="btn btn-primary mr-2">Go</button>
+        <button id="next-page" class="btn btn-primary mr-2"><i class="fas fa-arrow-right"></i></button>
+      </div>
+      <div id="preview-panel"></div>
+      <div>
         <input type="checkbox" id="night-mode" class="mr-2" />
-        <label for="night-mode" class="mr-3">Night Mode</label>
-        <button id="prev-page" class="btn btn-primary mr-2"><i class="fas fa-arrow-left"></i> Previous Page</button>
-        <button id="next-page" class="btn btn-primary mr-2">Next Page <i class="fas fa-arrow-right"></i></button>
-        <button id="zoom-in" class="btn btn-secondary mr-2">Zoom In <i class="fas fa-search-plus"></i></button>
-        <button id="zoom-out" class="btn btn-secondary">Zoom Out <i class="fas fa-search-minus"></i></button>
+        <label for="night-mode">Night Mode</label>
       </div>
     </div>
 
@@ -61,15 +107,20 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.min.js"></script>
+
     <script>
-      const book = document.getElementById('book');
       const nightModeCheckbox = document.getElementById('night-mode');
+      const pageNumberInput = document.getElementById('page-number');
+      const goToPageBtn = document.getElementById('go-to-page');
       const prevPageBtn = document.getElementById('prev-page');
       const nextPageBtn = document.getElementById('next-page');
-      const zoomInBtn = document.getElementById('zoom-in');
-      const zoomOutBtn = document.getElementById('zoom-out');
+      const previewPanel = document.getElementById('preview-panel');
+      const pdfViewer = document.getElementById('pdf-viewer');
 
       let currentPage = 1;
+      let pdfDoc = null;
 
       // Function to toggle night mode
       function toggleNightMode() {
@@ -77,8 +128,71 @@
           document.body.style.backgroundColor = '#333';
           document.body.style.color = '#fff';
         } else {
-          document.body.style.backgroundColor = '#f0f0f0';
+          document.body.style.backgroundColor = '#f5d5ae';
           document.body.style.color = '#333';
+        }
+      }
+
+      // Function to render PDF
+      async function renderPdf(url) {
+        const loadingTask = pdfjsLib.getDocument(url);
+        pdfDoc = await loadingTask.promise;
+        renderPage(1);
+        renderPreview();
+      }
+
+      // Function to render specific page
+      function renderPage(num) {
+        pdfDoc.getPage(num).then(function (page) {
+          const viewport = page.getViewport({ scale: 1 });
+          const canvas = document.getElementById('pdf-viewer');
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          const renderContext = {
+            canvasContext: context,
+            viewport: viewport,
+          };
+          page.render(renderContext);
+          pageNumberInput.value = num;
+        });
+      }
+
+      // Function to render preview of next pages
+      function renderPreview() {
+        const numPreviews = Math.min(5, pdfDoc.numPages - currentPage);
+        previewPanel.innerHTML = '';
+        for (let i = 1; i <= numPreviews; i++) {
+          const pageNum = currentPage + i;
+          pdfDoc.getPage(pageNum).then(function (page) {
+            const viewport = page.getViewport({ scale: 0.3 });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const renderContext = {
+              canvasContext: context,
+              viewport: viewport,
+            };
+            page.render(renderContext).promise.then(() => {
+              canvas.classList.add('preview-item');
+              canvas.addEventListener('click', () => {
+                renderPage(pageNum);
+              });
+              previewPanel.appendChild(canvas);
+            });
+          });
+        }
+      }
+
+      // Function to navigate to a specific page
+      function goToPage() {
+        const pageNumber = parseInt(pageNumberInput.value);
+        if (pageNumber >= 1 && pageNumber <= pdfDoc.numPages) {
+          currentPage = pageNumber;
+          renderPage(currentPage);
+          renderPreview();
         }
       }
 
@@ -86,35 +200,29 @@
       function prevPage() {
         if (currentPage > 1) {
           currentPage--;
-          book.contentWindow.postMessage(JSON.stringify({ page: currentPage }), '*');
+          renderPage(currentPage);
+          renderPreview();
         }
       }
 
       // Function to navigate to the next page
       function nextPage() {
-        currentPage++;
-        book.contentWindow.postMessage(JSON.stringify({ page: currentPage }), '*');
-      }
-
-      // Function to zoom in
-      function zoomIn() {
-        book.contentWindow.postMessage(JSON.stringify({ zoom: 1.25 }), '*');
-      }
-
-      // Function to zoom out
-      function zoomOut() {
-        book.contentWindow.postMessage(JSON.stringify({ zoom: 0.8 }), '*');
+        if (currentPage < pdfDoc.numPages) {
+          currentPage++;
+          renderPage(currentPage);
+          renderPreview();
+        }
       }
 
       // Event listeners
       nightModeCheckbox.addEventListener('change', toggleNightMode);
+      goToPageBtn.addEventListener('click', goToPage);
       prevPageBtn.addEventListener('click', prevPage);
       nextPageBtn.addEventListener('click', nextPage);
-      zoomInBtn.addEventListener('click', zoomIn);
-      zoomOutBtn.addEventListener('click', zoomOut);
 
       // Initialize night mode
       toggleNightMode();
+      renderPdf('etikaKristen.pdf');
     </script>
   </body>
 </html>
